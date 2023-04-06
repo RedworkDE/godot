@@ -38,6 +38,19 @@
 #include <string.h>
 #include <type_traits>
 
+// GCC and MSVC define __SANITIZE_ADDRESS__ and clang uses __has_feature to check if sanitizers are enabled
+#if !defined(__SANITIZE_ADDRESS__) && defined(__clang__)
+#if __has_feature(address_sanitizer)
+#define __SANITIZE_ADDRESS__ 1
+#endif
+#endif
+
+#if defined(__SANITIZE_ADDRESS__)
+extern "C" void __sanitizer_annotate_contiguous_container(const void *p_beg, const void *p_end, const void *p_old_mid, const void *p_new_mid);
+#else
+#define __sanitizer_cowdata_annotate(m_alloc_size, m_old_mid, m_new_mid)
+#endif
+
 template <class T>
 class Vector;
 class String;
@@ -114,6 +127,14 @@ private:
 	void _ref(const CowData *p_from);
 	void _ref(const CowData &p_from);
 	uint32_t _copy_on_write();
+
+#if defined(__SANITIZE_ADDRESS__)
+	void __sanitizer_cowdata_annotate(size_t p_alloc_size, size_t p_old_count, size_t p_new_count) {
+		if (_ptr) {
+			__sanitizer_annotate_contiguous_container(_ptr, ((uint8_t *)_ptr) + p_alloc_size, ((uint8_t *)_ptr) + p_old_count, ((uint8_t *)_ptr) + p_new_count);
+		}
+	}
+#endif
 
 public:
 	void operator=(const CowData<T> &p_from) { _ref(p_from); }
@@ -215,6 +236,7 @@ void CowData<T>::_unref(void *p_data) {
 	}
 
 	// free mem
+	__sanitizer_cowdata_annotate(_get_alloc_size(size()), size() * sizeof(T), _get_alloc_size(size()));
 	Memory::free_static((uint8_t *)p_data, true);
 }
 
@@ -230,8 +252,9 @@ uint32_t CowData<T>::_copy_on_write() {
 	if (unlikely(rc > 1)) {
 		/* in use by more than me */
 		uint32_t current_size = *_get_size();
+		size_t alloc_size = _get_alloc_size(current_size);
 
-		uint32_t *mem_new = (uint32_t *)Memory::alloc_static(_get_alloc_size(current_size), true);
+		uint32_t *mem_new = (uint32_t *)Memory::alloc_static(alloc_size, true);
 
 		new (mem_new - 2) SafeNumeric<uint32_t>(1); //refcount
 		*(mem_new - 1) = current_size; //size
@@ -250,6 +273,8 @@ uint32_t CowData<T>::_copy_on_write() {
 
 		_unref(_ptr);
 		_ptr = _data;
+
+		__sanitizer_cowdata_annotate(alloc_size, alloc_size, current_size * sizeof(T));
 
 		rc = 1;
 	}
@@ -291,14 +316,18 @@ Error CowData<T>::resize(int p_size) {
 				new (ptr - 2) SafeNumeric<uint32_t>(1); //refcount
 
 				_ptr = (T *)ptr;
-
+				__sanitizer_cowdata_annotate(alloc_size, alloc_size, p_size * sizeof(T));
 			} else {
+				__sanitizer_cowdata_annotate(current_alloc_size, current_size * sizeof(T), current_alloc_size);
 				uint32_t *_ptrnew = (uint32_t *)Memory::realloc_static(_ptr, alloc_size, true);
 				ERR_FAIL_COND_V(!_ptrnew, ERR_OUT_OF_MEMORY);
 				new (_ptrnew - 2) SafeNumeric<uint32_t>(rc); //refcount
 
 				_ptr = (T *)(_ptrnew);
+				__sanitizer_cowdata_annotate(alloc_size, alloc_size, p_size * sizeof(T));
 			}
+		} else {
+			__sanitizer_cowdata_annotate(alloc_size, current_size * sizeof(T), p_size * sizeof(T));
 		}
 
 		// construct the newly created elements
@@ -323,11 +352,15 @@ Error CowData<T>::resize(int p_size) {
 		}
 
 		if (alloc_size != current_alloc_size) {
+			__sanitizer_cowdata_annotate(current_alloc_size, current_size * sizeof(T), current_alloc_size);
 			uint32_t *_ptrnew = (uint32_t *)Memory::realloc_static(_ptr, alloc_size, true);
 			ERR_FAIL_COND_V(!_ptrnew, ERR_OUT_OF_MEMORY);
 			new (_ptrnew - 2) SafeNumeric<uint32_t>(rc); //refcount
 
 			_ptr = (T *)(_ptrnew);
+			__sanitizer_cowdata_annotate(alloc_size, alloc_size, p_size * sizeof(T));
+		} else {
+			__sanitizer_cowdata_annotate(alloc_size, current_size * sizeof(T), p_size * sizeof(T));
 		}
 
 		*_get_size() = p_size;
