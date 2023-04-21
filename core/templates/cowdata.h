@@ -35,6 +35,7 @@
 #include "core/os/memory.h"
 #include "core/templates/safe_refcount.h"
 
+#include <stdint.h>
 #include <string.h>
 #include <type_traits>
 
@@ -48,6 +49,20 @@ class VMap;
 
 SAFE_NUMERIC_TYPE_PUN_GUARANTEES(uint32_t)
 
+class CowDataBase {
+#ifdef DEBUG_ENABLED
+public:
+	static SafeNumeric<int64_t> mem_usage;
+	static SafeNumeric<int64_t> mem_reserved;
+	static SafeNumeric<int64_t> mem_allocated;
+	static void update(int64_t p_usage, int64_t p_reserved) {
+		mem_usage.add(p_usage);
+		mem_reserved.add(p_reserved);
+		mem_allocated.add(p_reserved + p_usage);
+	}
+#endif
+};
+
 // Silence a false positive warning (see GH-52119).
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
@@ -55,7 +70,7 @@ SAFE_NUMERIC_TYPE_PUN_GUARANTEES(uint32_t)
 #endif
 
 template <class T>
-class CowData {
+class CowData : CowDataBase {
 	template <class TV>
 	friend class Vector;
 	friend class String;
@@ -214,6 +229,7 @@ void CowData<T>::_unref(void *p_data) {
 		}
 	}
 
+	update(-int64_t(size() * sizeof(T)), -int64_t(_get_alloc_size(size()) - (size() * sizeof(T))));
 	// free mem
 	Memory::free_static((uint8_t *)p_data, true);
 }
@@ -231,6 +247,7 @@ uint32_t CowData<T>::_copy_on_write() {
 		/* in use by more than me */
 		uint32_t current_size = *_get_size();
 
+		update(current_size * sizeof(T), _get_alloc_size(current_size) - current_size * sizeof(T));
 		uint32_t *mem_new = (uint32_t *)Memory::alloc_static(_get_alloc_size(current_size), true);
 
 		new (mem_new - 2) SafeNumeric<uint32_t>(1); //refcount
@@ -285,6 +302,7 @@ Error CowData<T>::resize(int p_size) {
 		if (alloc_size != current_alloc_size) {
 			if (current_size == 0) {
 				// alloc from scratch
+				update(0, alloc_size);
 				uint32_t *ptr = (uint32_t *)Memory::alloc_static(alloc_size, true);
 				ERR_FAIL_COND_V(!ptr, ERR_OUT_OF_MEMORY);
 				*(ptr - 1) = 0; //size, currently none
@@ -293,6 +311,7 @@ Error CowData<T>::resize(int p_size) {
 				_ptr = (T *)ptr;
 
 			} else {
+				update(0, alloc_size - current_alloc_size);
 				uint32_t *_ptrnew = (uint32_t *)Memory::realloc_static(_ptr, alloc_size, true);
 				ERR_FAIL_COND_V(!_ptrnew, ERR_OUT_OF_MEMORY);
 				new (_ptrnew - 2) SafeNumeric<uint32_t>(rc); //refcount
@@ -302,7 +321,7 @@ Error CowData<T>::resize(int p_size) {
 		}
 
 		// construct the newly created elements
-
+		update((p_size - current_size) * sizeof(T), -(p_size - current_size) * sizeof(T));
 		if (!std::is_trivially_constructible<T>::value) {
 			for (int i = *_get_size(); i < p_size; i++) {
 				memnew_placement(&_ptr[i], T);
@@ -322,7 +341,10 @@ Error CowData<T>::resize(int p_size) {
 			}
 		}
 
+		update((p_size - current_size) * sizeof(T), -(p_size - current_size) * sizeof(T));
+
 		if (alloc_size != current_alloc_size) {
+			update(0, alloc_size - current_alloc_size);
 			uint32_t *_ptrnew = (uint32_t *)Memory::realloc_static(_ptr, alloc_size, true);
 			ERR_FAIL_COND_V(!_ptrnew, ERR_OUT_OF_MEMORY);
 			new (_ptrnew - 2) SafeNumeric<uint32_t>(rc); //refcount

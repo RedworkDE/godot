@@ -107,6 +107,9 @@ String Performance::get_monitor_name(Monitor p_monitor) const {
 		"memory/static",
 		"memory/static_max",
 		"memory/msg_buf_max",
+		"memory/cowdata_usage",
+		"memory/cowdata_reserved",
+		"memory/cowdata_allocated",
 		"object/objects",
 		"object/resources",
 		"object/nodes",
@@ -155,6 +158,12 @@ double Performance::get_monitor(Monitor p_monitor) const {
 			return Memory::get_mem_max_usage();
 		case MEMORY_MESSAGE_BUFFER_MAX:
 			return MessageQueue::get_singleton()->get_max_buffer_usage();
+		case MEMORY_COWDATA_USAGE:
+			return CowDataBase::mem_usage.get();
+		case MEMORY_COWDATA_ALLOCATED:
+			return CowDataBase::mem_allocated.get();
+		case MEMORY_COWDATA_RESERVED:
+			return CowDataBase::mem_reserved.get();
 		case OBJECT_COUNT:
 			return ObjectDB::get_object_count();
 		case OBJECT_RESOURCE_COUNT:
@@ -223,6 +232,9 @@ Performance::MonitorType Performance::get_monitor_type(Monitor p_monitor) const 
 		MONITOR_TYPE_TIME,
 		MONITOR_TYPE_TIME,
 		MONITOR_TYPE_TIME,
+		MONITOR_TYPE_MEMORY,
+		MONITOR_TYPE_MEMORY,
+		MONITOR_TYPE_MEMORY,
 		MONITOR_TYPE_MEMORY,
 		MONITOR_TYPE_MEMORY,
 		MONITOR_TYPE_MEMORY,
