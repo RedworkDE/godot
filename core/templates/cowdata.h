@@ -35,6 +35,7 @@
 #include "core/os/memory.h"
 #include "core/templates/safe_refcount.h"
 
+#include <stdint.h>
 #include <string.h>
 #include <type_traits>
 
@@ -47,6 +48,20 @@ template <class T, class V>
 class VMap;
 
 SAFE_NUMERIC_TYPE_PUN_GUARANTEES(uint32_t)
+
+class CowDataBase {
+#ifdef DEBUG_ENABLED
+public:
+	static SafeNumeric<int64_t> mem_usage;
+	static SafeNumeric<int64_t> mem_reserved;
+	static SafeNumeric<int64_t> mem_allocated;
+	static void update(int64_t p_usage, int64_t p_reserved) {
+		mem_usage.add(p_usage);
+		mem_reserved.add(p_reserved);
+		mem_allocated.add(p_reserved + p_usage);
+	}
+#endif
+};
 
 struct CowDataPrefix {
 	SafeNumeric<uint32_t> refcount;
@@ -64,7 +79,7 @@ struct CowDataPrefix {
 		((void)0)
 
 template <class T>
-class CowData {
+class CowData : CowDataBase {
 	template <class TV>
 	friend class Vector;
 	friend class String;
@@ -230,6 +245,7 @@ void CowData<T>::_unref(CowDataPrefix *p_prefix) {
 		}
 	}
 
+	update(-int64_t(p_prefix->size * sizeof(T)), -int64_t((p_prefix->capacity - p_prefix->size) * sizeof(T)));
 	// Free the underlying memory.
 	Memory::free_static(p_prefix);
 }
@@ -256,6 +272,7 @@ Error CowData<T>::_copy_from(CowDataPrefix *p_from, int p_size, int p_capacity) 
 	ERR_FAIL_COND_V(p_size < 0, ERR_INVALID_PARAMETER);
 	ERR_FAIL_COND_V(p_capacity < 0, ERR_INVALID_PARAMETER);
 
+	update(p_size * sizeof(T), (p_capacity - p_size) * sizeof(T));
 	CowDataPrefix *mem_new = (CowDataPrefix *)Memory::alloc_static(size_t(p_capacity) * sizeof(T) + prefix_offset());
 	ERR_FAIL_COND_V_MSG(!mem_new, ERR_OUT_OF_MEMORY, "Insufficient memory to allocate CowData");
 
@@ -371,6 +388,7 @@ Error CowData<T>::resize(int p_size) {
 			memset((void *)(_ptr + current_size), 0, (p_size - current_size) * sizeof(T));
 		}
 
+		update((p_size - current_size) * sizeof(T), -(p_size - current_size) * sizeof(T));
 		_get_prefix()->size = p_size;
 		return OK;
 
@@ -387,6 +405,7 @@ Error CowData<T>::resize(int p_size) {
 					t->~T();
 				}
 			}
+			update((p_size - current_size) * sizeof(T), -(p_size - current_size) * sizeof(T));
 			_get_prefix()->size = p_size;
 
 			return OK;
