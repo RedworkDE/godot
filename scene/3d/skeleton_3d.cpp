@@ -833,14 +833,12 @@ Ref<Skin> Skeleton3D::create_skin_from_rest_transforms() {
 	int len = bones.size();
 
 	// Calculate global rests and invert them.
-	LocalVector<int> bones_to_process;
-	bones_to_process = get_parentless_bones();
+	LocalVector<int> bones_to_process = LocalVector(get_parentless_bones());
 	while (bones_to_process.size() > 0) {
 		int current_bone_idx = bones_to_process[0];
 		const Bone &b = bonesptr[current_bone_idx];
 		bones_to_process.erase(current_bone_idx);
-		LocalVector<int> child_bones_vector;
-		child_bones_vector = get_bone_children(current_bone_idx);
+		LocalVector<int> child_bones_vector = LocalVector(get_bone_children(current_bone_idx));
 		int child_bones_size = child_bones_vector.size();
 		if (b.parent < 0) {
 			skin->set_bind_pose(current_bone_idx, b.rest);

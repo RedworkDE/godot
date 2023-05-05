@@ -35,6 +35,7 @@
 #include "core/os/memory.h"
 #include "core/templates/sort_array.h"
 #include "core/templates/vector.h"
+#include "core/typedefs.h"
 
 #include <initializer_list>
 #include <type_traits>
@@ -69,9 +70,9 @@ public:
 		}
 
 		if constexpr (!std::is_trivially_constructible<T>::value && !force_trivial) {
-			memnew_placement(&data[count++], T(p_elem));
+			memnew_placement(&data[count++], T(std::move(p_elem)));
 		} else {
-			data[count++] = p_elem;
+			data[count++] = std::move(p_elem);
 		}
 	}
 
@@ -297,30 +298,41 @@ public:
 	}
 
 	_FORCE_INLINE_ LocalVector() {}
+	_FORCE_INLINE_ LocalVector(LocalVector &&p_from) {
+		std::swap(count, p_from.count);
+		std::swap(capacity, p_from.capacity);
+		std::swap(data, p_from.data);
+	}
+	explicit _FORCE_INLINE_ LocalVector(const LocalVector &p_from) {
+		resize(p_from.size());
+		for (U i = 0; i < p_from.count; i++) {
+			data[i] = T(p_from.data[i]);
+		}
+	}
 	_FORCE_INLINE_ LocalVector(std::initializer_list<T> p_init) {
 		reserve(p_init.size());
 		for (const T &element : p_init) {
-			push_back(element);
+			push_back(T(element));
 		}
 	}
-	_FORCE_INLINE_ LocalVector(const LocalVector &p_from) {
-		resize(p_from.size());
-		for (U i = 0; i < p_from.count; i++) {
-			data[i] = p_from.data[i];
+	explicit _FORCE_INLINE_ LocalVector(const Vector<T> &p_init) {
+		reserve(p_init.size());
+		for (const T &element : p_init) {
+			push_back(T(element));
 		}
 	}
-	inline void operator=(const LocalVector &p_from) {
-		resize(p_from.size());
-		for (U i = 0; i < p_from.count; i++) {
-			data[i] = p_from.data[i];
-		}
+	inline LocalVector &operator=(LocalVector &&p_from) {
+		std::swap(count, p_from.count);
+		std::swap(capacity, p_from.capacity);
+		std::swap(data, p_from.data);
+		return *this;
 	}
-	inline void operator=(const Vector<T> &p_from) {
-		resize(p_from.size());
-		for (U i = 0; i < count; i++) {
-			data[i] = p_from[i];
-		}
-	}
+	// inline LocalVector& operator=(LocalVector p_from) {
+	// 	std::swap(count, p_from.count);
+	// 	std::swap(capacity, p_from.capacity);
+	// 	std::swap(data, p_from.data);
+	// 	return *this;
+	// }
 
 	_FORCE_INLINE_ ~LocalVector() {
 		if (data) {

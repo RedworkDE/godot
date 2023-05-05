@@ -212,7 +212,7 @@ private:
 		bool exists = _lookup_pos(p_key, pos);
 
 		if (exists) {
-			elements[pos]->data.value = p_value;
+			elements[pos]->data.value = TValue(p_value);
 			return elements[pos];
 		} else {
 			if (num_elements + 1 > MAX_OCCUPANCY * capacity) {

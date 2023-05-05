@@ -43,6 +43,7 @@
 // Should be available everywhere.
 #include "core/error/error_list.h"
 #include <cstdint>
+#include <type_traits>
 
 // Turn argument to string constant:
 // https://gcc.gnu.org/onlinedocs/cpp/Stringizing.html#Stringizing
@@ -132,9 +133,15 @@ constexpr auto CLAMP(const T m_a, const T2 m_min, const T3 m_max) {
 #define SWAP(m_x, m_y) __swap_tmpl((m_x), (m_y))
 template <class T>
 inline void __swap_tmpl(T &x, T &y) {
-	T aux = x;
-	x = y;
-	y = aux;
+	if constexpr (std::is_move_constructible_v<T> && std::is_move_assignable_v<T>) {
+		T aux = std::move(x);
+		x = std::move(y);
+		y = std::move(aux);
+	} else {
+		T aux = x;
+		x = y;
+		y = aux;
+	}
 }
 #endif // SWAP
 

@@ -744,7 +744,7 @@ void VisualShader::add_node(Type p_type, const Ref<VisualShaderNode> &p_node, co
 		custom->update_ports();
 	}
 
-	g->nodes[p_id] = n;
+	g->nodes[p_id] = std::move(n);
 
 	_queue_update();
 }

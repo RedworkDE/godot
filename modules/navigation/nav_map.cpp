@@ -660,7 +660,7 @@ void NavMap::sync() {
 		for (const NavRegion *region : regions) {
 			const LocalVector<gd::Polygon> &polygons_source = region->get_polygons();
 			for (uint32_t n = 0; n < polygons_source.size(); n++) {
-				polygons[count + n] = polygons_source[n];
+				polygons[count + n] = gd::Polygon(polygons_source[n]);
 			}
 			count += region->get_polygons().size();
 		}

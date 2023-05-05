@@ -117,7 +117,7 @@ void AStarGrid2D::update() {
 		for (int64_t x = region.position.x; x < end_x; x++) {
 			line.push_back(Point(Vector2i(x, y), offset + Vector2(x, y) * cell_size));
 		}
-		points.push_back(line);
+		points.push_back(LocalVector(std::move(line)));
 	}
 	dirty = false;
 }

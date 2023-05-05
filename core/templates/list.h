@@ -288,7 +288,7 @@ public:
 		}
 
 		Element *n = memnew_allocator(Element, A);
-		n->value = (T &)value;
+		n->value = T(value);
 
 		n->prev_ptr = _data->last;
 		n->next_ptr = nullptr;

@@ -406,7 +406,7 @@ private:
 			} else if (less(node->_data.key, p_key)) {
 				node = node->right;
 			} else {
-				node->_data.value = p_value;
+				node->_data.value = V(p_value);
 				return node; // Return existing node with new value
 			}
 		}

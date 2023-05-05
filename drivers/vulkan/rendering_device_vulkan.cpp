@@ -5806,7 +5806,7 @@ RID RenderingDeviceVulkan::uniform_set_create(const Vector<Uniform> &p_uniforms,
 	uniform_set.pool_key = pool_key;
 	uniform_set.descriptor_set = descriptor_set;
 	uniform_set.format = shader->set_formats[p_shader_set];
-	uniform_set.attachable_textures = attachable_textures;
+	uniform_set.attachable_textures = LocalVector(attachable_textures);
 	uniform_set.mutable_sampled_textures = mutable_sampled_textures;
 	uniform_set.mutable_storage_textures = mutable_storage_textures;
 	uniform_set.shader_set = p_shader_set;

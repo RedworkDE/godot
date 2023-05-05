@@ -5003,7 +5003,7 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 		}
 	}
 
-	compression.bounds = track_bounds;
+	compression.bounds = std::move(track_bounds);
 	compression.fps = p_fps;
 	compression.enabled = true;
 
@@ -5025,7 +5025,7 @@ void Animation::compress(uint32_t p_page_size, uint32_t p_fps, float p_split_tol
 				ScaleTrack *st = static_cast<ScaleTrack *>(t);
 				st->scales.clear();
 				st->compressed_track = i;
-				print_line("Scale Bounds " + itos(i) + ": " + track_bounds[i]);
+				print_line("Scale Bounds " + itos(i) + ": " + compression.bounds[i]);
 			} break;
 			case TYPE_BLEND_SHAPE: {
 				BlendShapeTrack *bst = static_cast<BlendShapeTrack *>(t);

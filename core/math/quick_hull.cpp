@@ -441,7 +441,7 @@ Error QuickHull::build(const Vector<Vector3> &p_points, Geometry3D::MeshData &r_
 	int idx = 0;
 	for (List<Geometry3D::MeshData::Face>::Element *E = ret_faces.front(); E; E = E->next()) {
 		face_indices[E] = idx;
-		r_mesh.faces[idx++] = E->get();
+		r_mesh.faces[idx++] = Geometry3D::MeshData::Face(E->get());
 	}
 	r_mesh.edges.resize(ret_edges.size());
 	idx = 0;
@@ -456,7 +456,7 @@ Error QuickHull::build(const Vector<Vector3> &p_points, Geometry3D::MeshData &r_
 		r_mesh.edges[idx++] = e;
 	}
 
-	r_mesh.vertices = p_points;
+	r_mesh.vertices = LocalVector(p_points);
 
 	return OK;
 }

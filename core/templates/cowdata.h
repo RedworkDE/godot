@@ -142,7 +142,7 @@ public:
 	_FORCE_INLINE_ void set(int p_index, const T &p_elem) {
 		ERR_FAIL_INDEX(p_index, size());
 		_copy_on_write();
-		_ptr[p_index] = p_elem;
+		_ptr[p_index] = T(p_elem);
 	}
 
 	_FORCE_INLINE_ T &get_m(int p_index) {
@@ -165,7 +165,7 @@ public:
 		T *p = ptrw();
 		int len = size();
 		for (int i = p_index; i < len - 1; i++) {
-			p[i] = p[i + 1];
+			p[i] = std::move(p[i + 1]);
 		}
 
 		resize(len - 1);

@@ -322,7 +322,7 @@ VkBool32 VulkanContext::_check_layers(uint32_t check_count, const char *const *c
 }
 
 Error VulkanContext::_get_preferred_validation_layers(uint32_t *count, const char *const **names) {
-	static const LocalVector<LocalVector<const char *>> instance_validation_layers_alt{
+	static const LocalVector<LocalVector<const char *>> instance_validation_layers_alt = {
 		// Preferred set of validation layers.
 		{ "VK_LAYER_KHRONOS_validation" },
 

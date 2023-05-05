@@ -176,7 +176,7 @@ void Geometry3D::MeshData::optimize_vertices() {
 			new_vertices[vtx_remap[i]] = vertices[i];
 		}
 	}
-	vertices = new_vertices;
+	vertices = std::move(new_vertices);
 }
 
 struct _FaceClassify {
@@ -659,7 +659,7 @@ Geometry3D::MeshData Geometry3D::build_convex_mesh(const Vector<Plane> &p_planes
 				}
 			}
 
-			vertices = new_vertices;
+			vertices = std::move(new_vertices);
 		}
 
 		if (vertices.size() < 3) {

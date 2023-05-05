@@ -156,6 +156,9 @@ public:
 
 		RID get_debug_texture();
 
+		inline HZBuffer &operator =(HZBuffer&&) = default;
+		HZBuffer() = default;
+		explicit HZBuffer(const HZBuffer&) = default;
 		virtual ~HZBuffer(){};
 	};
 

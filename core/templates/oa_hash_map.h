@@ -222,7 +222,7 @@ public:
 		bool exists = _lookup_pos(p_key, pos);
 
 		if (exists) {
-			values[pos] = p_data;
+			values[pos] = TValue(p_data);
 		} else {
 			insert(p_key, p_data);
 		}

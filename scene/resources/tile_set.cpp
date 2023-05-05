@@ -4424,7 +4424,7 @@ void TileSetAtlasSource::move_tile_in_atlas(Vector2i p_atlas_coords, Vector2i p_
 
 	// Move the tile and update its size.
 	if (new_atlas_coords != p_atlas_coords) {
-		tiles[new_atlas_coords] = tiles[p_atlas_coords];
+		tiles[new_atlas_coords] = std::move(tiles[p_atlas_coords]);
 		tiles.erase(p_atlas_coords);
 
 		tiles_ids.erase(p_atlas_coords);
@@ -5302,7 +5302,7 @@ void TileData::set_collision_polygon_points(int p_layer_id, int p_polygon_index,
 			physics.write[p_layer_id].polygons.write[p_polygon_index].shapes[i] = shape;
 		}
 	}
-	physics.write[p_layer_id].polygons.write[p_polygon_index].polygon = p_polygon;
+	physics.write[p_layer_id].polygons.write[p_polygon_index].polygon = LocalVector(p_polygon);
 	emit_signal(SNAME("changed"));
 }
 

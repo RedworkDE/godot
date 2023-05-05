@@ -78,6 +78,9 @@ public:
 		void sort_rays(const Vector3 &p_camera_dir, bool p_orthogonal);
 		void update_camera_rays(const Transform3D &p_cam_transform, const Projection &p_cam_projection, bool p_cam_orthogonal);
 
+		inline RaycastHZBuffer &operator =(RaycastHZBuffer&&) = default;
+		RaycastHZBuffer() = default;
+		explicit RaycastHZBuffer(const RaycastHZBuffer&) = default;
 		~RaycastHZBuffer();
 	};
 
