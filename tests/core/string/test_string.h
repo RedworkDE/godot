@@ -1054,14 +1054,14 @@ TEST_CASE("[String] sprintf") {
 	REQUIRE(error);
 	CHECK(output == "too many decimal points in format");
 
-	// * not a number or vector.
+	// * not a number.
 	format = "fish %*f frog";
 	args.clear();
 	args.push_back("cheese");
 	args.push_back(99.99);
 	output = format.sprintf(args, &error);
 	REQUIRE(error);
-	CHECK(output == "* wants number or vector");
+	CHECK(output == "* wants number");
 
 	// Character too long.
 	format = "fish %c frog";

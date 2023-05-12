@@ -313,6 +313,9 @@ public:
 	String lpad(int min_length, const String &character = " ") const;
 	String rpad(int min_length, const String &character = " ") const;
 	String sprintf(const Array &values, bool *error) const;
+	String sprintf(const Variant *p_values, int p_values_size, bool *error) const;
+	String sprintf_builder(const Array &values, bool *error) const;
+	String sprintf_old(const Array &values, bool *error) const;
 	String quote(String quotechar = "\"") const;
 	String unquote() const;
 	static String num(double p_num, int p_decimals = -1);
@@ -339,7 +342,7 @@ public:
 	static double to_float(const char *p_str);
 	static double to_float(const wchar_t *p_str, const wchar_t **r_end = nullptr);
 	static double to_float(const char32_t *p_str, const char32_t **r_end = nullptr);
-	static uint32_t num_characters(int64_t p_int);
+	static uint32_t num_characters(int64_t p_int, int64_t p_base = 10);
 
 	String capitalize() const;
 	String to_camel_case() const;

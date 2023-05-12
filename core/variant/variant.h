@@ -815,17 +815,10 @@ const Variant::ObjData &Variant::_get_obj() const {
 	return *reinterpret_cast<const ObjData *>(&_data._mem[0]);
 }
 
-template <typename... VarArgs>
-String vformat(const String &p_text, const VarArgs... p_args) {
-	Variant args[sizeof...(p_args) + 1] = { p_args..., Variant() }; // +1 makes sure zero sized arrays are also supported.
-	Array args_array;
-	args_array.resize(sizeof...(p_args));
-	for (uint32_t i = 0; i < sizeof...(p_args); i++) {
-		args_array[i] = args[i];
-	}
-
+#define vformat(m_text, ...) vformat_impl(m_text, { __VA_ARGS__ })
+String vformat_impl(const String &p_text, std::initializer_list<Variant> p_args) {
 	bool error = false;
-	String fmt = p_text.sprintf(args_array, &error);
+	String fmt = p_text.sprintf(p_args.begin(), p_args.size(), &error);
 
 	ERR_FAIL_COND_V_MSG(error, String(), fmt);
 

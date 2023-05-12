@@ -797,7 +797,7 @@ String InputEventMouseButton::to_string() {
 	String d = double_click ? "true" : "false";
 
 	MouseButton idx = get_button_index();
-	String button_string = itos((int64_t)idx);
+	String button_string;
 
 	switch (idx) {
 		case MouseButton::LEFT:
@@ -809,18 +809,17 @@ String InputEventMouseButton::to_string() {
 		case MouseButton::WHEEL_RIGHT:
 		case MouseButton::MB_XBUTTON1:
 		case MouseButton::MB_XBUTTON2:
-			button_string += vformat(" (%s)", TTRGET(_mouse_button_descriptions[(size_t)idx - 1])); // button index starts from 1, array index starts from 0, so subtract 1
+			button_string = vformat("%d (%s)", idx, TTRGET(_mouse_button_descriptions[(size_t)idx - 1])); // button index starts from 1, array index starts from 0, so subtract 1
 			break;
 		default:
+			button_string = itos((int64_t)idx);
 			break;
 	}
 
 	String mods = InputEventWithModifiers::as_text();
 	mods = mods.is_empty() ? "none" : mods;
 
-	// Work around the fact vformat can only take 5 substitutions but 6 need to be passed.
-	String index_and_mods = vformat("button_index=%s, mods=%s", button_index, mods);
-	return vformat("InputEventMouseButton: %s, pressed=%s, position=(%s), button_mask=%d, double_click=%s", index_and_mods, p, String(get_position()), get_button_mask(), d);
+	return vformat("InputEventMouseButton: button_index=%s, mods=%s, pressed=%s, position=(%s), button_mask=%d, double_click=%s", button_string, mods, p, String(get_position()), get_button_mask(), d);
 }
 
 void InputEventMouseButton::_bind_methods() {
@@ -930,9 +929,7 @@ String InputEventMouseMotion::to_string() {
 		button_mask_string += vformat(" (%s)", TTRGET(_mouse_button_descriptions[(size_t)MouseButton::MB_XBUTTON2 - 1]));
 	}
 
-	// Work around the fact vformat can only take 5 substitutions but 7 need to be passed.
-	String mask_and_position_and_relative = vformat("button_mask=%s, position=(%s), relative=(%s)", button_mask_string, String(get_position()), String(get_relative()));
-	return vformat("InputEventMouseMotion: %s, velocity=(%s), pressure=%.2f, tilt=(%s), pen_inverted=(%s)", mask_and_position_and_relative, String(get_velocity()), get_pressure(), String(get_tilt()), get_pen_inverted());
+	return vformat("InputEventMouseMotion: button_mask=%s, position=(%s), relative=(%s), velocity=(%s), pressure=%.2f, tilt=(%s), pen_inverted=(%s)", button_mask_string, String(get_position()), String(get_relative()), String(get_velocity()), get_pressure(), String(get_tilt()), get_pen_inverted());
 }
 
 bool InputEventMouseMotion::accumulate(const Ref<InputEvent> &p_event) {

@@ -31,18 +31,26 @@
 #include "ustring.h"
 
 #include "core/crypto/crypto_core.h"
+#include "core/error/error_macros.h"
 #include "core/math/color.h"
 #include "core/math/math_funcs.h"
 #include "core/os/memory.h"
 #include "core/string/print_string.h"
+#include "core/string/string_builder.h"
 #include "core/string/string_name.h"
 #include "core/string/translation.h"
 #include "core/string/ucaps.h"
+#include "core/string/ustring.h"
+#include "core/typedefs.h"
 #include "core/variant/variant.h"
+#include "core/variant/variant_internal.h"
 #include "core/version_generated.gen.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <vcruntime_string.h>
+#include <algorithm>
 #include <cstdint>
 
 #ifdef _MSC_VER
@@ -665,6 +673,10 @@ bool String::operator==(const String &p_str) const {
 
 	const char32_t *src = get_data();
 	const char32_t *dst = p_str.get_data();
+
+	if (src == dst) {
+		return true;
+	}
 
 	/* Compare char by char */
 	for (int i = 0; i < l; i++) {
@@ -2655,20 +2667,12 @@ double String::to_float(const wchar_t *p_str, const wchar_t **r_end) {
 	return built_in_strtod<wchar_t>(p_str, (wchar_t **)r_end);
 }
 
-uint32_t String::num_characters(int64_t p_int) {
-	int r = 1;
-	if (p_int < 0) {
-		r += 1;
-		if (p_int == INT64_MIN) {
-			p_int = INT64_MAX;
-		} else {
-			p_int = -p_int;
-		}
-	}
-	while (p_int >= 10) {
-		p_int /= 10;
+uint32_t String::num_characters(int64_t p_int, int64_t p_base) {
+	int r = p_int < 0 ? 1 : 0;
+	do {
+		p_int /= p_base;
 		r++;
-	}
+	} while (p_int);
 	return r;
 }
 
@@ -4755,7 +4759,952 @@ String String::lpad(int min_length, const String &character) const {
 //   "fish %s pie" % "frog"
 //   "fish %s %d pie" % ["frog", 12]
 // In case of an error, the string returned is the error description and "error" is true.
-String String::sprintf(const Array &values, bool *error) const {
+String String::sprintf(const Array &p_values, bool *p_error) const {
+	return sprintf(p_values.ptr(), p_values.size(), p_error);
+}
+
+String String::sprintf(const Variant *p_values, int p_values_size, bool *p_error) const {
+	struct sprintf_data {
+		enum : uint8_t {
+			END,
+			LITERAL,
+			HOLE_INTEGER,
+			HOLE_FLOAT,
+			HOLE_VECTOR,
+			HOLE_STRING,
+			HOLE_CHAR,
+		} type;
+		enum : uint8_t {
+			PAD_WITH_ZEROS = 1 << 0,
+			LEFT_JUSTIFIED = 1 << 1,
+			SHOW_SIGN = 1 << 2,
+			CAPITALIZE = 1 << 3,
+		} flags;
+		uint8_t base;
+
+		union {
+			int min_chars;
+			int literal_start;
+		};
+		union {
+			int min_decimals;
+			int literal_size;
+		};
+		int argument;
+	};
+
+	static const auto parse_int = [](const char32_t *p_string, int &p_start, int p_length) -> int {
+		int value = 0;
+		const char32_t *start = p_string + p_start;
+		const char32_t *end = p_string + p_length;
+		for (; start < end && *start >= '0' && *start <= '9'; start++, p_start++) {
+			value = value * 10 + (*start - '0');
+		}
+		return value;
+	};
+
+	static const auto parse = [](const String &p_format, TightLocalVector<sprintf_data> &p_data, int &r_parameter_count) -> const char * {
+		int placeholder_count = p_format._cowdata.count('%');
+		p_data.resize(placeholder_count * 2 + 2);
+		memset(p_data.ptr(), 0, p_data.size() * sizeof(p_data[0]));
+
+		const char32_t *ptr = p_format.ptr();
+		int format_length = p_format.length();
+		int argument_index = 0;
+		int command_index = 0;
+		int index = 0;
+		while (true) {
+			int next_index = p_format._cowdata.find('%', index);
+			if (next_index == -1) {
+				if (index != format_length) {
+					p_data[command_index].literal_start = index;
+					p_data[command_index].literal_size = format_length - index;
+					p_data[command_index++].type = sprintf_data::LITERAL;
+				}
+				p_data[command_index++].type = sprintf_data::END;
+				r_parameter_count = argument_index;
+				return nullptr;
+			}
+			if (p_format[next_index + 1] == '%') {
+				p_data[command_index].literal_start = index;
+				p_data[command_index].literal_size = next_index + 1 - index;
+				p_data[command_index++].type = sprintf_data::LITERAL;
+				index = next_index + 2;
+				continue;
+			}
+			if (index != next_index) {
+				p_data[command_index].literal_start = index;
+				p_data[command_index].literal_size = next_index - index;
+				p_data[command_index++].type = sprintf_data::LITERAL;
+			}
+			index = next_index + 1;
+			bool in_decimals = false;
+			while (index < format_length) {
+				switch (ptr[index++]) {
+					case 'd': { // Integer (signed)
+						p_data[command_index].base = 10;
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_INTEGER;
+						goto next_hole;
+					}
+					case 'o': { // Octal
+						p_data[command_index].base = 8;
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_INTEGER;
+						goto next_hole;
+					}
+					case 'x': { // Hexadecimal (lowercase)
+						p_data[command_index].base = 16;
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_INTEGER;
+						goto next_hole;
+					}
+					case 'X': { // Hexadecimal (uppercase)
+						p_data[command_index].base = 16;
+						p_data[command_index].flags = decltype(sprintf_data::flags)(p_data[command_index].flags | sprintf_data::CAPITALIZE);
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_INTEGER;
+						goto next_hole;
+					}
+					case 'f': { // Float
+						if (!in_decimals) {
+							p_data[command_index].min_decimals = 6;
+						}
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_FLOAT;
+						goto next_hole;
+					}
+					case 'v': { // Vector2/3/4/2i/3i/4i
+						if (!in_decimals) {
+							p_data[command_index].min_decimals = 6;
+						}
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_VECTOR;
+						goto next_hole;
+					}
+					case 's': { // String
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_STRING;
+						goto next_hole;
+					}
+					case 'c': {
+						p_data[command_index].argument = argument_index++;
+						p_data[command_index++].type = sprintf_data::HOLE_CHAR;
+						goto next_hole;
+					}
+					case '-': { // Left justify
+						if (p_data[command_index].flags & sprintf_data::PAD_WITH_ZEROS) {
+							WARN_PRINT("'-' flag ignored with '0' flag in string format");
+						} else {
+							p_data[command_index].flags = decltype(sprintf_data::flags)(p_data[command_index].flags | sprintf_data::LEFT_JUSTIFIED);
+						}
+					} break;
+					case '+': { // Show + if positive.
+						p_data[command_index].flags = decltype(sprintf_data::flags)(p_data[command_index].flags | sprintf_data::SHOW_SIGN);
+					} break;
+					case '.': { // Float/Vector separator.
+						if (in_decimals) {
+							return "too many decimal points in format";
+						}
+						in_decimals = true;
+					} break;
+					case '0': {
+						if (!in_decimals) {
+							if (p_data[command_index].flags & sprintf_data::LEFT_JUSTIFIED) {
+								WARN_PRINT("'0' flag ignored with '-' flag in string format");
+							} else {
+								p_data[command_index].flags = decltype(sprintf_data::flags)(p_data[command_index].flags | sprintf_data::PAD_WITH_ZEROS);
+							}
+							break;
+						} else {
+							// fallthrough to the next case, decimals can start with a 0
+						}
+					}
+					case '1':
+					case '2':
+					case '3':
+					case '4':
+					case '5':
+					case '6':
+					case '7':
+					case '8':
+					case '9': {
+						index--;
+						int n = parse_int(ptr, index, format_length);
+						if (in_decimals) {
+							if (unlikely(p_data[command_index].min_decimals)) {
+								return p_data[command_index].min_decimals > 0 ? "interrupted min decimals specifier" : "min decimals cannot be both static and dynamic";
+							}
+							p_data[command_index].min_decimals = n;
+						} else {
+							if (unlikely(p_data[command_index].min_chars)) {
+								return p_data[command_index].min_chars > 0 ? "interrupted min chars specifier" : "min chars cannot be both static and dynamic";
+							}
+							p_data[command_index].min_chars = n;
+						}
+					} break;
+					case '*': { // Dynamic width, based on value.
+						if (in_decimals) {
+							if (unlikely(p_data[command_index].min_decimals)) {
+								return "min decimals cannot be both static and dynamic";
+							}
+							p_data[command_index].min_decimals = ~(argument_index++);
+						} else {
+							if (unlikely(p_data[command_index].min_chars)) {
+								return "min chars cannot be both static and dynamic";
+							}
+							p_data[command_index].min_chars = ~(argument_index++);
+						}
+					} break;
+					default: {
+						return "unsupported format character";
+					}
+				}
+			}
+			return "incomplete format";
+		next_hole:;
+		}
+	};
+
+	static const auto get_dynamic = [](const Variant *p_values, int &r_value) -> const char * {
+		if (r_value < 0) {
+			int index = ~r_value;
+			const Variant &value = p_values[index];
+			if (!value.is_num()) {
+				return "* wants number";
+			}
+			r_value = value;
+		}
+		return nullptr;
+	};
+
+#define GET_DYNAMIC(m_name)                                \
+	int m_name = p_data->m_name;                           \
+	{                                                      \
+		const char *error = get_dynamic(p_values, m_name); \
+		if (unlikely(error)) {                             \
+			return error;                                  \
+		}                                                  \
+	}                                                      \
+	(void)0
+
+	static const auto estimate_size = [](const String &p_format, const sprintf_data *p_data, const Variant *p_values, int &r_size) -> const char * {
+		int size_estimate = 0;
+
+		while (true) {
+			switch (p_data->type) {
+				case sprintf_data::END: {
+					r_size = size_estimate;
+					return nullptr;
+				} break;
+				case sprintf_data::LITERAL: {
+					size_estimate += p_data->literal_size;
+				} break;
+				case sprintf_data::HOLE_INTEGER: {
+					GET_DYNAMIC(min_chars);
+					size_estimate += MAX(min_chars + 1, 10);
+				} break;
+				case sprintf_data::HOLE_FLOAT: {
+					GET_DYNAMIC(min_chars);
+					GET_DYNAMIC(min_decimals);
+					size_estimate += MAX(min_chars + min_decimals + 2, 15);
+				} break;
+				case sprintf_data::HOLE_VECTOR: {
+					int components = 0;
+					switch (p_values[p_data->argument].get_type()) {
+						case Variant::VECTOR2:
+						case Variant::VECTOR2I: {
+							components = 2;
+						} break;
+						case Variant::VECTOR3:
+						case Variant::VECTOR3I: {
+							components = 3;
+						} break;
+						case Variant::VECTOR4:
+						case Variant::VECTOR4I: {
+							components = 4;
+						} break;
+						default: {
+							return "%v requires a vector type (Vector2/3/4/2i/3i/4i)";
+						}
+					}
+					GET_DYNAMIC(min_chars);
+					GET_DYNAMIC(min_decimals);
+					size_estimate += (MAX(min_chars + min_decimals + 2, 15) + 2) * components;
+				} break;
+				case sprintf_data::HOLE_STRING: {
+					GET_DYNAMIC(min_chars);
+					int value_size = 15;
+					const Variant &value = p_values[p_data->argument];
+					if (value.get_type() == Variant::STRING) {
+						value_size = VariantInternal::get_string(&value)->length();
+					}
+					size_estimate += MAX(min_chars, value_size);
+				} break;
+				case sprintf_data::HOLE_CHAR: {
+					GET_DYNAMIC(min_chars);
+					size_estimate += MAX(min_chars, 1);
+				} break;
+			}
+			p_data++;
+		}
+	};
+
+#define ENSURE_CAPACITY(m_count)                \
+	if (index + (m_count) >= p_size_estimate) { \
+		p_size_estimate = index + (m_count);    \
+		formatted.resize(p_size_estimate + 1);  \
+		dst_ptr = formatted.ptrw();             \
+	}                                           \
+	(void)0
+	static const auto format = [](const String &p_format, const sprintf_data *p_data, const Variant *p_values, int p_size_estimate, bool &r_error, String &r_result) -> const char * {
+		String formatted;
+		formatted.resize(p_size_estimate + 1);
+		const char32_t *src_ptr = p_format.ptr();
+		char32_t *dst_ptr = formatted.ptrw();
+		int index = 0;
+
+		while (true) {
+			switch (p_data->type) {
+				case sprintf_data::END: {
+					formatted[index++] = 0;
+					formatted.resize(index);
+					r_result = formatted;
+					return nullptr;
+				} break;
+				case sprintf_data::LITERAL: {
+					ENSURE_CAPACITY(p_data->literal_size);
+					memcpy(dst_ptr + index, src_ptr + p_data->literal_start, p_data->literal_size * sizeof(char32_t));
+					index += p_data->literal_size;
+				} break;
+				case sprintf_data::HOLE_STRING: {
+					const String &value = p_values[p_data->argument];
+					int value_length = value.length();
+
+					GET_DYNAMIC(min_chars);
+					int pad_chars = MAX(0, min_chars - value_length);
+					bool pad_right = (p_data->flags & sprintf_data::LEFT_JUSTIFIED) && pad_chars > 0;
+
+					ENSURE_CAPACITY(1 + pad_chars);
+
+					if (!pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, ' ');
+						index += pad_chars;
+					}
+
+					memcpy(dst_ptr + index, value.ptr(), value_length * sizeof(char32_t));
+					index += value_length;
+
+					if (pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, ' ');
+						index += pad_chars;
+					}
+				} break;
+				case sprintf_data::HOLE_CHAR: {
+					const Variant &value = p_values[p_data->argument];
+					Variant::Type type = value.get_type();
+
+					GET_DYNAMIC(min_chars);
+					int pad_chars = MAX(0, min_chars - 1);
+					bool pad_right = (p_data->flags & sprintf_data::LEFT_JUSTIFIED) && pad_chars > 0;
+
+					ENSURE_CAPACITY(1 + pad_chars);
+
+					if (!pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, ' ');
+						index += pad_chars;
+					}
+
+					if (type == Variant::STRING) {
+						const String &string_value = *VariantInternal::get_string(&value);
+						if (string_value.length() != 1) {
+							return "%c requires number or single-character string";
+						}
+						dst_ptr[index++] = string_value[0];
+					} else if (type == Variant::FLOAT || type == Variant::INT) {
+						int64_t value_int = value;
+						if (value_int < 0) {
+							return "unsigned integer is lower than minimum";
+						} else if (value_int >= 0xd800 && value_int <= 0xdfff) {
+							return "unsigned integer is invalid Unicode character";
+						} else if (value_int > 0x10ffff) {
+							return "unsigned integer is greater than maximum";
+						}
+						dst_ptr[index++] = value_int;
+					} else {
+						return "%c requires number or single-character string";
+					}
+
+					if (pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, ' ');
+						index += pad_chars;
+					}
+				} break;
+				case sprintf_data::HOLE_INTEGER: {
+					int64_t value = p_values[p_data->argument];
+					GET_DYNAMIC(min_chars);
+					int base = p_data->base;
+					bool capitalize = (p_data->flags & sprintf_data::CAPITALIZE);
+					bool pad_with_zeros = (p_data->flags & sprintf_data::PAD_WITH_ZEROS);
+					bool show_sign = (p_data->flags & sprintf_data::SHOW_SIGN) || value < 0;
+					int sign_length = show_sign ? 1 : 0;
+					int num_length = num_characters(value, base) - (value < 0 ? 1 : 0);
+					int pad_chars = MAX(0, min_chars - num_length - sign_length);
+					bool pad_right = (p_data->flags & sprintf_data::LEFT_JUSTIFIED);
+
+					ENSURE_CAPACITY(pad_chars + sign_length + num_length);
+
+					if (show_sign && pad_with_zeros) {
+						dst_ptr[index++] = value < 0 ? '-' : '+';
+					}
+
+					if (!pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+						index += pad_chars;
+					}
+
+					if (show_sign && !pad_with_zeros) {
+						dst_ptr[index++] = value < 0 ? '-' : '+';
+					}
+
+					index += num_length;
+					char32_t *chars = dst_ptr + index;
+					do {
+						int mod = ABS(value % base);
+						if (mod >= 10) {
+							char a = (capitalize ? 'A' : 'a');
+							*(--chars) = a + (mod - 10);
+						} else {
+							*(--chars) = '0' + mod;
+						}
+
+						value /= base;
+					} while (value);
+
+					if (pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+						index += pad_chars;
+					}
+				} break;
+				case sprintf_data::HOLE_FLOAT: {
+					double value = p_values[p_data->argument];
+					GET_DYNAMIC(min_chars);
+					GET_DYNAMIC(min_decimals);
+					String value_string = num(ABS(value), min_decimals);
+					if (Math::is_finite(value)) {
+						value_string = value_string.pad_decimals(min_decimals);
+					}
+					bool pad_with_zeros = (p_data->flags & sprintf_data::PAD_WITH_ZEROS) && Math::is_finite(value);
+					bool show_sign = (p_data->flags & sprintf_data::SHOW_SIGN) || value < 0;
+					int sign_length = show_sign ? 1 : 0;
+					int num_length = value_string.length();
+					int pad_chars = MAX(0, min_chars - num_length - sign_length);
+					bool pad_right = (p_data->flags & sprintf_data::LEFT_JUSTIFIED);
+
+					ENSURE_CAPACITY(pad_chars + sign_length + num_length);
+
+					if (show_sign && pad_with_zeros) {
+						dst_ptr[index++] = value < 0 ? '-' : '+';
+					}
+
+					if (!pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+						index += pad_chars;
+					}
+
+					if (show_sign && !pad_with_zeros) {
+						dst_ptr[index++] = value < 0 ? '-' : '+';
+					}
+
+					memcpy(dst_ptr + index, value_string.ptr(), num_length * sizeof(char32_t));
+					index += num_length;
+
+					if (pad_right && pad_chars > 0) {
+						std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+						index += pad_chars;
+					}
+				} break;
+				case sprintf_data::HOLE_VECTOR: {
+					const Variant &value = p_values[p_data->argument];
+					Variant::Type type = value.get_type();
+
+					int count;
+					switch (type) {
+						case Variant::VECTOR2:
+						case Variant::VECTOR2I: {
+							count = 2;
+						} break;
+						case Variant::VECTOR3:
+						case Variant::VECTOR3I: {
+							count = 3;
+						} break;
+						case Variant::VECTOR4:
+						case Variant::VECTOR4I: {
+							count = 4;
+						} break;
+						default: {
+							return "%v requires a vector type (Vector2/3/4/2i/3i/4i)";
+						}
+					}
+
+					GET_DYNAMIC(min_chars);
+					GET_DYNAMIC(min_decimals);
+
+					Vector4 vec = value;
+					ENSURE_CAPACITY(1);
+					dst_ptr[index++] = '(';
+					for (int i = 0; i < count; i++) {
+						double value = vec[i];
+						String value_string = num(ABS(value), min_decimals);
+						if (Math::is_finite(value)) {
+							value_string = value_string.pad_decimals(min_decimals);
+						}
+						bool pad_with_zeros = (p_data->flags & sprintf_data::PAD_WITH_ZEROS) && Math::is_finite(value);
+						bool show_sign = (p_data->flags & sprintf_data::SHOW_SIGN) || value < 0;
+						int sign_length = show_sign ? 1 : 0;
+						int num_length = value_string.length();
+						int pad_chars = MAX(0, min_chars - num_length - sign_length);
+						bool pad_right = (p_data->flags & sprintf_data::LEFT_JUSTIFIED);
+
+						ENSURE_CAPACITY(pad_chars + sign_length + num_length);
+
+						if (show_sign && pad_with_zeros) {
+							dst_ptr[index++] = value < 0 ? '-' : '+';
+						}
+
+						if (!pad_right && pad_chars > 0) {
+							std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+							index += pad_chars;
+						}
+
+						if (show_sign && !pad_with_zeros) {
+							dst_ptr[index++] = value < 0 ? '-' : '+';
+						}
+
+						memcpy(dst_ptr + index, value_string.ptr(), num_length * sizeof(char32_t));
+						index += num_length;
+
+						if (pad_right && pad_chars > 0) {
+							std::fill_n(dst_ptr + index, pad_chars, pad_with_zeros ? '0' : ' ');
+							index += pad_chars;
+						}
+
+						if (i < count - 1) {
+							ENSURE_CAPACITY(2);
+							dst_ptr[index++] = ',';
+							dst_ptr[index++] = ' ';
+						}
+					}
+					ENSURE_CAPACITY(1);
+					dst_ptr[index++] = ')';
+
+					break;
+				}
+			}
+			p_data++;
+		}
+	};
+#undef ENSURE_CAPACITY
+
+#define SPRINTF_STAGE(m_func)       \
+	{                               \
+		const char *error = m_func; \
+		if (unlikely(error)) {      \
+			*p_error = true;        \
+			return error;           \
+		}                           \
+	}                               \
+	(void)0
+
+	bool error_dummy = false;
+	if (!p_error) {
+		p_error = &error_dummy;
+	}
+
+	static thread_local String cached_format_string;
+	static thread_local TightLocalVector<sprintf_data> cached_format_data;
+	static thread_local int cached_parameter_count;
+
+	if (this->_cowdata.ptr() != cached_format_string._cowdata.ptr() || cached_format_data.is_empty()) {
+		SPRINTF_STAGE(parse(*this, cached_format_data, cached_parameter_count));
+		cached_format_string = *this;
+	}
+
+	if (p_values_size != cached_parameter_count) {
+		*p_error = true;
+		return p_values_size > cached_parameter_count ? "not all arguments converted during string formatting" : "not enough arguments for format string";
+	}
+
+	int result_size = 0;
+	String result;
+	SPRINTF_STAGE(estimate_size(*this, cached_format_data.ptr(), p_values, result_size));
+	SPRINTF_STAGE(format(*this, cached_format_data.ptr(), p_values, result_size, *p_error, result));
+	*p_error = false;
+	return result;
+}
+
+String String::sprintf_builder(const Array &values, bool *error) const {
+	StringBuilder formatted;
+	char32_t *self = (char32_t *)get_data();
+	bool in_format = false;
+	int value_index = 0;
+	int min_chars = 0;
+	int min_decimals = 0;
+	bool in_decimals = false;
+	bool pad_with_zeros = false;
+	bool left_justified = false;
+	bool show_sign = false;
+
+	if (error) {
+		*error = true;
+	}
+
+	for (; *self; self++) {
+		const char32_t c = *self;
+
+		if (in_format) { // We have % - let's see what else we get.
+			switch (c) {
+				case '%': { // Replace %% with %
+					formatted += chr(c);
+					in_format = false;
+					break;
+				}
+				case 'd': // Integer (signed)
+				case 'o': // Octal
+				case 'x': // Hexadecimal (lowercase)
+				case 'X': { // Hexadecimal (uppercase)
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					if (!values[value_index].is_num()) {
+						return "a number is required";
+					}
+
+					int64_t value = values[value_index];
+					int base = 16;
+					bool capitalize = false;
+					switch (c) {
+						case 'd':
+							base = 10;
+							break;
+						case 'o':
+							base = 8;
+							break;
+						case 'x':
+							break;
+						case 'X':
+							base = 16;
+							capitalize = true;
+							break;
+					}
+					// Get basic number.
+					String str = String::num_int64(ABS(value), base, capitalize);
+					int number_len = str.length();
+
+					// Padding.
+					int pad_chars_count = (value < 0 || show_sign) ? min_chars - 1 : min_chars;
+					String pad_char = pad_with_zeros ? String("0") : String(" ");
+					if (left_justified) {
+						str = str.rpad(pad_chars_count, pad_char);
+					} else {
+						str = str.lpad(pad_chars_count, pad_char);
+					}
+
+					// Sign.
+					if (show_sign || value < 0) {
+						String sign_char = value < 0 ? "-" : "+";
+						if (left_justified) {
+							str = str.insert(0, sign_char);
+						} else {
+							str = str.insert(pad_with_zeros ? 0 : str.length() - number_len, sign_char);
+						}
+					}
+
+					formatted += str;
+					++value_index;
+					in_format = false;
+
+					break;
+				}
+				case 'f': { // Float
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					if (!values[value_index].is_num()) {
+						return "a number is required";
+					}
+
+					double value = values[value_index];
+					bool is_negative = (value < 0);
+					String str = String::num(ABS(value), min_decimals);
+					const bool is_finite = Math::is_finite(value);
+
+					// Pad decimals out.
+					if (is_finite) {
+						str = str.pad_decimals(min_decimals);
+					}
+
+					int initial_len = str.length();
+
+					// Padding. Leave room for sign later if required.
+					int pad_chars_count = (is_negative || show_sign) ? min_chars - 1 : min_chars;
+					String pad_char = (pad_with_zeros && is_finite) ? String("0") : String(" "); // Never pad NaN or inf with zeros
+					if (left_justified) {
+						str = str.rpad(pad_chars_count, pad_char);
+					} else {
+						str = str.lpad(pad_chars_count, pad_char);
+					}
+
+					// Add sign if needed.
+					if (show_sign || is_negative) {
+						String sign_char = is_negative ? "-" : "+";
+						if (left_justified) {
+							str = str.insert(0, sign_char);
+						} else {
+							str = str.insert(pad_with_zeros ? 0 : str.length() - initial_len, sign_char);
+						}
+					}
+
+					formatted += str;
+					++value_index;
+					in_format = false;
+					break;
+				}
+				case 'v': { // Vector2/3/4/2i/3i/4i
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					int count;
+					switch (values[value_index].get_type()) {
+						case Variant::VECTOR2:
+						case Variant::VECTOR2I: {
+							count = 2;
+						} break;
+						case Variant::VECTOR3:
+						case Variant::VECTOR3I: {
+							count = 3;
+						} break;
+						case Variant::VECTOR4:
+						case Variant::VECTOR4I: {
+							count = 4;
+						} break;
+						default: {
+							return "%v requires a vector type (Vector2/3/4/2i/3i/4i)";
+						}
+					}
+
+					Vector4 vec = values[value_index];
+					String str = "(";
+					for (int i = 0; i < count; i++) {
+						double val = vec[i];
+						String number_str = String::num(ABS(val), min_decimals);
+						const bool is_finite = Math::is_finite(val);
+
+						// Pad decimals out.
+						if (is_finite) {
+							number_str = number_str.pad_decimals(min_decimals);
+						}
+
+						int initial_len = number_str.length();
+
+						// Padding. Leave room for sign later if required.
+						int pad_chars_count = val < 0 ? min_chars - 1 : min_chars;
+						String pad_char = (pad_with_zeros && is_finite) ? String("0") : String(" "); // Never pad NaN or inf with zeros
+						if (left_justified) {
+							number_str = number_str.rpad(pad_chars_count, pad_char);
+						} else {
+							number_str = number_str.lpad(pad_chars_count, pad_char);
+						}
+
+						// Add sign if needed.
+						if (val < 0) {
+							if (left_justified) {
+								number_str = number_str.insert(0, "-");
+							} else {
+								number_str = number_str.insert(pad_with_zeros ? 0 : number_str.length() - initial_len, "-");
+							}
+						}
+
+						// Add number to combined string
+						str += number_str;
+
+						if (i < count - 1) {
+							str += ", ";
+						}
+					}
+					str += ")";
+
+					formatted += str;
+					++value_index;
+					in_format = false;
+					break;
+				}
+				case 's': { // String
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					String str = values[value_index];
+					// Padding.
+					if (left_justified) {
+						str = str.rpad(min_chars);
+					} else {
+						str = str.lpad(min_chars);
+					}
+
+					formatted += str;
+					++value_index;
+					in_format = false;
+					break;
+				}
+				case 'c': {
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					// Convert to character.
+					String str;
+					if (values[value_index].is_num()) {
+						int value = values[value_index];
+						if (value < 0) {
+							return "unsigned integer is lower than minimum";
+						} else if (value >= 0xd800 && value <= 0xdfff) {
+							return "unsigned integer is invalid Unicode character";
+						} else if (value > 0x10ffff) {
+							return "unsigned integer is greater than maximum";
+						}
+						str = chr(values[value_index]);
+					} else if (values[value_index].get_type() == Variant::STRING) {
+						str = values[value_index];
+						if (str.length() != 1) {
+							return "%c requires number or single-character string";
+						}
+					} else {
+						return "%c requires number or single-character string";
+					}
+
+					// Padding.
+					if (left_justified) {
+						str = str.rpad(min_chars);
+					} else {
+						str = str.lpad(min_chars);
+					}
+
+					formatted += str;
+					++value_index;
+					in_format = false;
+					break;
+				}
+				case '-': { // Left justify
+					left_justified = true;
+					break;
+				}
+				case '+': { // Show + if positive.
+					show_sign = true;
+					break;
+				}
+				case '0':
+				case '1':
+				case '2':
+				case '3':
+				case '4':
+				case '5':
+				case '6':
+				case '7':
+				case '8':
+				case '9': {
+					int n = c - '0';
+					if (in_decimals) {
+						min_decimals *= 10;
+						min_decimals += n;
+					} else {
+						if (c == '0' && min_chars == 0) {
+							if (left_justified) {
+								WARN_PRINT("'0' flag ignored with '-' flag in string format");
+							} else {
+								pad_with_zeros = true;
+							}
+						} else {
+							min_chars *= 10;
+							min_chars += n;
+						}
+					}
+					break;
+				}
+				case '.': { // Float/Vector separator.
+					if (in_decimals) {
+						return "too many decimal points in format";
+					}
+					in_decimals = true;
+					min_decimals = 0; // We want to add the value manually.
+					break;
+				}
+
+				case '*': { // Dynamic width, based on value.
+					if (value_index >= values.size()) {
+						return "not enough arguments for format string";
+					}
+
+					Variant::Type value_type = values[value_index].get_type();
+					if (!values[value_index].is_num() &&
+							value_type != Variant::VECTOR2 && value_type != Variant::VECTOR2I &&
+							value_type != Variant::VECTOR3 && value_type != Variant::VECTOR3I &&
+							value_type != Variant::VECTOR4 && value_type != Variant::VECTOR4I) {
+						return "* wants number or vector";
+					}
+
+					int size = values[value_index];
+
+					if (in_decimals) {
+						min_decimals = size;
+					} else {
+						min_chars = size;
+					}
+
+					++value_index;
+					break;
+				}
+
+				default: {
+					return "unsupported format character";
+				}
+			}
+		} else { // Not in format string.
+			switch (c) {
+				case '%':
+					in_format = true;
+					// Back to defaults:
+					min_chars = 0;
+					min_decimals = 6;
+					pad_with_zeros = false;
+					left_justified = false;
+					show_sign = false;
+					in_decimals = false;
+					break;
+				default:
+					formatted += chr(c);
+			}
+		}
+	}
+
+	if (in_format) {
+		return "incomplete format";
+	}
+
+	if (value_index != values.size()) {
+		return "not all arguments converted during string formatting";
+	}
+
+	if (error) {
+		*error = false;
+	}
+	return formatted;
+}
+
+String String::sprintf_old(const Array &values, bool *error) const {
 	String formatted;
 	char32_t *self = (char32_t *)get_data();
 	bool in_format = false;

@@ -81,6 +81,10 @@ void Array::_unref() const {
 	_p = nullptr;
 }
 
+const Variant *Array::ptr() const {
+	return _p->array.ptr();
+}
+
 Variant &Array::operator[](int p_idx) {
 	if (unlikely(_p->read_only)) {
 		*_p->read_only = _p->array[p_idx];

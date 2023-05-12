@@ -2476,6 +2476,108 @@ Error Main::setup2() {
 
 	engine->startup_benchmark_end_measure(); // scene
 
+for (int n = 0; n < 5; n++){
+
+	String a = "###";
+	String b = "Hello";
+	String c = "World";
+	String s = " ";
+
+	Array args;
+	args.push_back(a);
+	args.push_back(b);
+	args.push_back(c);
+
+	int iterations = 1'000'000;
+	uint64_t start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		StringBuilder builder;
+		builder += a;
+		builder += s;
+		builder += b;
+		builder += s;
+		builder += c;
+		builder.as_string();
+	}
+	uint64_t end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("StringBuilder: %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		String builder;
+		builder += a;
+		builder += s;
+		builder += b;
+		builder += s;
+		builder += c;
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("String (+=): %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		String builder = a + s + b + s + c;
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("String (+): %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	String format = "%s %s %s";
+	String format2 = "%s %s %s";
+	for (int i = 0; i < iterations / 2; i++) {
+		format.sprintf(args, nullptr);
+		format2.sprintf(args, nullptr);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("sprintf: %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		format.sprintf(args, nullptr);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("sprintf (cached): %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		format.sprintf_old(args, nullptr);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("sprintf (old): %sms", end - start));
+
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations; i++) {
+		format.sprintf_builder(args, nullptr);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("sprintf (builder): %sms", end - start));
+	
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations / 2; i++) {
+		vformat2(format, a, b, c);
+		vformat2(format2, a, b, c);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("vformat: %sms", end - start));
+	
+	start = OS::get_singleton()->get_ticks_msec();
+	for (int i = 0; i < iterations / 2; i++) {
+		Array a1;
+		a1.resize(3);
+		a1[0] = a;
+		a1[1] = b;
+		a1[2] = c;
+		format.sprintf_old(a1, nullptr);
+		Array a2;
+		a2.resize(3);
+		a2[0] = a;
+		a2[1] = b;
+		a2[2] = c;
+		format2.sprintf_old(a2, nullptr);
+	}
+	end = OS::get_singleton()->get_ticks_msec();
+	print_line(vformat("vformat (manual): %sms", end - start));
+}
 	return OK;
 }
 

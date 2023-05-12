@@ -2202,8 +2202,8 @@ void Image::initialize_data(int p_width, int p_height, bool p_use_mipmaps, Forma
 		} else {
 			description_mipmaps += "without mipmaps";
 		}
-		const String description = vformat("%dx%dx%d (%s)", p_width, p_height, get_format_pixel_size(p_format), description_mipmaps);
-		ERR_FAIL_MSG(vformat("Expected Image data size of %s = %d bytes, got %d bytes instead.", description, size, p_data.size()));
+		const String description = vformat("", p_width, p_height, get_format_pixel_size(p_format), description_mipmaps);
+		ERR_FAIL_MSG(vformat("Expected Image data size of %dx%dx%d (%s) = %d bytes, got %d bytes instead.", description, size, p_data.size()));
 	}
 
 	height = p_height;

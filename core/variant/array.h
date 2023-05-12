@@ -48,6 +48,7 @@ class Array {
 public:
 	void _ref(const Array &p_from) const;
 
+	const Variant *ptr() const;
 	Variant &operator[](int p_idx);
 	const Variant &operator[](int p_idx) const;
 
