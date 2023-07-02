@@ -8975,7 +8975,7 @@ void RenderingDeviceVulkan::initialize(VulkanContext *p_context, bool p_local_de
 
 	compute_list = nullptr;
 	_load_pipeline_cache();
-	print_verbose(vformat("Startup PSO cache (%.1f MiB)", pipelines_cache.buffer.size() / (1024.0f * 1024.0f)));
+	print_verbose(vformat("Startup PSO cache (%.1f B)", pipelines_cache.buffer.size()));
 	VkPipelineCacheCreateInfo cache_info = {};
 	cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 	cache_info.pNext = nullptr;
@@ -9076,7 +9076,7 @@ void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size
 	pipelines_cache.buffer.resize(p_pso_blob_size);
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &p_pso_blob_size, pipelines_cache.buffer.ptrw());
 	ERR_FAIL_COND(vr);
-	print_verbose(vformat("Updated PSO cache (%.1f MiB)", p_pso_blob_size / (1024.0f * 1024.0f)));
+	print_verbose(vformat("Updated PSO cache (%.1f B)", p_pso_blob_size));
 
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(context->get_physical_device(), &props);
@@ -9471,7 +9471,7 @@ void RenderingDeviceVulkan::finalize() {
 		vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
 		vkDestroyQueryPool(device, frames[i].timestamp_pool, nullptr);
 	}
-	_update_pipeline_cache(true);
+	//_update_pipeline_cache(true);
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
 
