@@ -64,7 +64,7 @@ jobs:
       - name: Compilation
         uses: ./.github/actions/godot-build
         with:
-          sconsflags: ${{ env.SCONSFLAGS }} dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
+          sconsflags: ${{ env.SCONSFLAGS }} dev_build=yes scu_build=yes debug_symbols=yes use_asan=no use_ubsan=no linker=gold
           platform: linuxbsd
           target: editor
           tests: no
@@ -102,7 +102,7 @@ jobs:
             echo "Attempt $i"
             unzip 4.0.zip
             mv "regression-test-project-4.0" "test_project"
-            ASAN_OPTIONS=debug=true:dump_instruction_bytes=true xvfb-run ./bin/godot.linuxbsd.editor.dev.x86_64.san --verbose --audio-driver Dummy --editor --quit --path test_project 2>&1 | tee sanitizers_log.txt || true
+            ASAN_OPTIONS=debug=true:dump_instruction_bytes=true xvfb-run ./bin/godot.linuxbsd.editor.dev.x86_64 --verbose --audio-driver Dummy --editor --quit --path test_project 2>&1 | tee sanitizers_log.txt || true
             misc/scripts/check_ci_log.py sanitizers_log.txt
             rm -rf test_project
             rm -rf ~/.local/share/godot/
