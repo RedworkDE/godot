@@ -9096,6 +9096,7 @@ void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size
 		f->store_buffer((const uint8_t *)&header, sizeof(PipelineCacheHeader));
 		f->store_buffer(pipelines_cache.buffer);
 	}
+	print_verbose(vformat("Done updating PSO cache (%.1f B)", p_pso_blob_size));
 }
 
 template <class T>
