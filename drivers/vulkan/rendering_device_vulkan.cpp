@@ -9471,7 +9471,7 @@ void RenderingDeviceVulkan::finalize() {
 		vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
 		vkDestroyQueryPool(device, frames[i].timestamp_pool, nullptr);
 	}
-	_update_pipeline_cache(true);
+	// _update_pipeline_cache(true);
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
 
