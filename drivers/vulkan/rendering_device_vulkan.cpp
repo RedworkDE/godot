@@ -9034,7 +9034,7 @@ void RenderingDeviceVulkan::_load_pipeline_cache() {
 
 void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 	size_t pso_blob_size = 0;
-	float save_interval = GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
+	float save_interval = 0; // GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &pso_blob_size, nullptr);
 	ERR_FAIL_COND(vr);
 	size_t difference = (pso_blob_size - pipelines_cache.current_size) / (1024 * 1024);
