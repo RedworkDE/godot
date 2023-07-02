@@ -9035,7 +9035,7 @@ void RenderingDeviceVulkan::_load_pipeline_cache() {
 void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 	// print_verbose(vformat("Check for updated PSO cache"));
 	size_t pso_blob_size = 0;
-	float save_interval = 0; // GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
+	float save_interval = GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &pso_blob_size, nullptr);
 	ERR_FAIL_COND(vr);
 	size_t difference = (pso_blob_size - pipelines_cache.current_size) / (1024 * 1024);
@@ -9055,22 +9055,22 @@ void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 		return;
 	}
 
-	_save_pipeline_cache_threaded(pso_blob_size);
+	// _save_pipeline_cache_threaded(pso_blob_size);
 
-	// if (p_closing) {
-	// 	if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
-	// 		pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
-	// 		WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
-	// 	} else {
-	// 		WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
-	// 		pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
-	// 		WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
-	// 	}
-	// } else {
-	// 	if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
-	// 		pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
-	// 	}
-	// }
+	if (p_closing) {
+		if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
+			pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
+			WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
+		} else {
+			WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
+			pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
+			WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
+		}
+	} else {
+		if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
+			pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
+		}
+	}
 }
 
 void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size) {
