@@ -22,70 +22,22 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - name: standard_vk_0
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_0
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_1
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_1
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_2
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_2
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_3
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_3
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_4
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_4
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_5
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_5
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_6
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_6
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
-          - name: standard_vk_7
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no precision=double use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.double.x86_64.san"
-          - name: nodouble_vk_7
-            target: editor
-            sconsflags: dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
-            bin: "./bin/godot.linuxbsd.editor.dev.x86_64.san"
+          - name: _0
+          - name: _1
+          - name: _2
+          - name: _3
+          - name: _4
+          - name: _5
+          - name: _6
+          - name: _7
+          - name: _8
+          - name: _9
+          - name: _A
+          - name: _B
+          - name: _C
+          - name: _D
+          - name: _E
+          - name: _F
 
     steps:
       - uses: actions/checkout@v3
@@ -97,6 +49,12 @@ jobs:
           sudo add-apt-repository ppa:kisak/kisak-mesa
           sudo apt-get install -qq mesa-vulkan-drivers
 
+      - name: Setup Godot build cache
+        uses: ./.github/actions/godot-cache
+        with:
+          cache-name: test-cache
+        continue-on-error: true
+
       - name: Setup python and scons
         uses: ./.github/actions/godot-deps
 
@@ -106,9 +64,9 @@ jobs:
       - name: Compilation
         uses: ./.github/actions/godot-build
         with:
-          sconsflags: ${{ env.SCONSFLAGS }} ${{ matrix.sconsflags }}
+          sconsflags: ${{ env.SCONSFLAGS }} dev_build=yes scu_build=yes debug_symbols=no use_asan=yes use_ubsan=yes linker=gold
           platform: linuxbsd
-          target: ${{ matrix.target }}
+          target: editor
           tests: no
       # - name: Prepare artifact
       #   run: |
@@ -144,7 +102,7 @@ jobs:
             echo "Attempt $i"
             unzip 4.0.zip
             mv "regression-test-project-4.0" "test_project"
-            ASAN_OPTIONS=debug=true:dump_instruction_bytes=true xvfb-run ${{ matrix.bin }} --audio-driver Dummy --editor --quit --path test_project 2>&1 | tee sanitizers_log.txt || true
+            ASAN_OPTIONS=debug=true:dump_instruction_bytes=true xvfb-run ./bin/godot.linuxbsd.editor.dev.x86_64.san --verbose --audio-driver Dummy --editor --quit --path test_project 2>&1 | tee sanitizers_log.txt || true
             misc/scripts/check_ci_log.py sanitizers_log.txt
             rm -rf test_project
             rm -rf ~/.local/share/godot/

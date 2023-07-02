@@ -9033,7 +9033,6 @@ void RenderingDeviceVulkan::_load_pipeline_cache() {
 }
 
 void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
-	return;
 	size_t pso_blob_size = 0;
 	float save_interval = GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &pso_blob_size, nullptr);
@@ -9472,7 +9471,7 @@ void RenderingDeviceVulkan::finalize() {
 		vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
 		vkDestroyQueryPool(device, frames[i].timestamp_pool, nullptr);
 	}
-	// _update_pipeline_cache(true);
+	_update_pipeline_cache(true);
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
 
