@@ -9471,6 +9471,9 @@ void RenderingDeviceVulkan::finalize() {
 		vkDestroyCommandPool(device, frames[i].command_pool, nullptr);
 		vkDestroyQueryPool(device, frames[i].timestamp_pool, nullptr);
 	}
+	if (pipelines_cache_save_task != WorkerThreadPool::INVALID_TASK_ID && !WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
+		WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
+	}
 	// _update_pipeline_cache(true);
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
