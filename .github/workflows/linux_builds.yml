@@ -64,7 +64,7 @@ jobs:
       - name: Compilation
         uses: ./.github/actions/godot-build
         with:
-          sconsflags: ${{ env.SCONSFLAGS }} dev_build=yes scu_build=yes debug_symbols=yes use_asan=yes use_ubsan=yes linker=gold
+          sconsflags: ${{ env.SCONSFLAGS }} dev_build=yes scu_build=yes debug_symbols=yes use_tsan=yes linker=gold
           platform: linuxbsd
           target: editor
           tests: no

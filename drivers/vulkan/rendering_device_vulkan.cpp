@@ -8975,7 +8975,7 @@ void RenderingDeviceVulkan::initialize(VulkanContext *p_context, bool p_local_de
 
 	compute_list = nullptr;
 	_load_pipeline_cache();
-	print_verbose(vformat("Startup PSO cache (%.1f B)", pipelines_cache.buffer.size()));
+	print_verbose(vformat("Startup PSO cache (%.1f MiB)", pipelines_cache.buffer.size() / (1024.0f * 1024.0f)));
 	VkPipelineCacheCreateInfo cache_info = {};
 	cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 	cache_info.pNext = nullptr;
@@ -9033,7 +9033,6 @@ void RenderingDeviceVulkan::_load_pipeline_cache() {
 }
 
 void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
-	// print_verbose(vformat("Check for updated PSO cache"));
 	size_t pso_blob_size = 0;
 	float save_interval = GLOBAL_GET("rendering/rendering_device/pipeline_cache/save_chunk_size_mb");
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &pso_blob_size, nullptr);
@@ -9054,8 +9053,6 @@ void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 	} else if (difference < save_interval && !p_closing) {
 		return;
 	}
-
-	// _save_pipeline_cache_threaded(pso_blob_size);
 
 	if (p_closing) {
 		if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
@@ -9079,7 +9076,7 @@ void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size
 	pipelines_cache.buffer.resize(p_pso_blob_size);
 	VkResult vr = vkGetPipelineCacheData(device, pipelines_cache.cache_object, &p_pso_blob_size, pipelines_cache.buffer.ptrw());
 	ERR_FAIL_COND(vr);
-	print_verbose(vformat("Updated PSO cache (%.1f B)", p_pso_blob_size));
+	print_verbose(vformat("Updated PSO cache (%.1f MiB)", p_pso_blob_size / (1024.0f * 1024.0f)));
 
 	VkPhysicalDeviceProperties props;
 	vkGetPhysicalDeviceProperties(context->get_physical_device(), &props);
@@ -9099,7 +9096,6 @@ void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size
 		f->store_buffer((const uint8_t *)&header, sizeof(PipelineCacheHeader));
 		f->store_buffer(pipelines_cache.buffer);
 	}
-	print_verbose(vformat("Done updating PSO cache (%.1f B)", p_pso_blob_size));
 }
 
 template <class T>
@@ -9476,9 +9472,6 @@ void RenderingDeviceVulkan::finalize() {
 		vkDestroyQueryPool(device, frames[i].timestamp_pool, nullptr);
 	}
 	_update_pipeline_cache(true);
-	if (pipelines_cache_save_task != WorkerThreadPool::INVALID_TASK_ID && !WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
-		WorkerThreadPool::get_singleton()->wait_for_task_completion(pipelines_cache_save_task);
-	}
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
 
