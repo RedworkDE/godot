@@ -9056,6 +9056,11 @@ void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 		return;
 	}
 
+#if 1
+	// FIXME: GH-78749
+	// Calling this threaded causes pretty frequent (memory corruption?) crashes in one CI leg. Figure out what is happening and restore this to threaded saving.
+	RenderingDeviceVulkan::_save_pipeline_cache_threaded(pso_blob_size);
+#else
 	if (p_closing) {
 		if (pipelines_cache_save_task == WorkerThreadPool::INVALID_TASK_ID || WorkerThreadPool::get_singleton()->is_task_completed(pipelines_cache_save_task)) {
 			pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
@@ -9070,6 +9075,7 @@ void RenderingDeviceVulkan::_update_pipeline_cache(bool p_closing) {
 			pipelines_cache_save_task = WorkerThreadPool::get_singleton()->add_template_task(this, &RenderingDeviceVulkan::_save_pipeline_cache_threaded, pso_blob_size, false, "PipelineCacheSave");
 		}
 	}
+#endif
 }
 
 void RenderingDeviceVulkan::_save_pipeline_cache_threaded(size_t p_pso_blob_size) {
